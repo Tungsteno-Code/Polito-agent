@@ -1,0 +1,25 @@
+# Environment and Secrets
+.env
+session.json
+*.session
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# Playwright
+.playwright/
+test-results/
+
+# Local data & temp downloads
+downloads/
+temp/
+appunti_pdf/
+.chrome_polito_profile/
+data/
+*.log
+NEWSPEC.txt
