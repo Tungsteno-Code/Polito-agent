@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from config import (
     API_BASE_URL,
     API_KEY,
+    AUTO_AGY,
     GEMINI_API_KEY,
     MODEL_NAME,
     PDF_OUTPUT_DIR,
@@ -804,6 +805,52 @@ class LectureProcessor:
         logger.info(f"Contesto salvato in: {context_path}")
         return context_path
 
+    def _run_agy_on_context(self, context_path: Path) -> Optional[Path]:
+        """
+        If `agy` CLI is available and AUTO_AGY is enabled, invokes `agy -p`
+        to execute the instructions embedded in `context_path` and produce the PDF
+        in `../Appunti_Lezioni/`. Returns the generated PDF Path if created, else None.
+        """
+        agy_bin = shutil.which("agy")
+        if not AUTO_AGY or not agy_bin:
+            return None
+
+        course_dir = context_path.parent.parent
+        appunti_dir = course_dir / "Appunti_Lezioni"
+        used_dir = context_path.parent / "used"
+        expected_pdf = appunti_dir / f"{context_path.stem}.pdf"
+
+        prompt = (
+            f"Leggi il file {context_path.name} ed esegui le istruzioni contenute al suo interno "
+            f"(genera gli appunti completi, compila il PDF in {expected_pdf} "
+            f"e sposta {context_path.name} in {used_dir}/)."
+        )
+        cmd = [
+            agy_bin,
+            "-p",
+            "--mode", "auto",
+            "--dangerously-skip-permissions",
+            "--disable-slash-commands",
+            "--add-dir", str(course_dir),
+            prompt,
+        ]
+        logger.info(f"Avvio automatico agy per eseguire le istruzioni di {context_path.name}...")
+        proc = subprocess.run(cmd, cwd=str(context_path.parent), check=False)
+        if proc.returncode != 0:
+            logger.warning(f"agy terminato con codice {proc.returncode}: contesto preservato in {context_path}")
+            return None
+
+        if expected_pdf.exists() and expected_pdf.stat().st_size > 0:
+            return expected_pdf
+
+        if appunti_dir.exists():
+            matches = sorted(appunti_dir.glob(f"{context_path.stem}*.pdf"))
+            if matches and matches[0].stat().st_size > 0:
+                return matches[0]
+
+        logger.warning(f"agy completato ma PDF non trovato in {expected_pdf}; contesto preservato.")
+        return None
+
     def cleanup_completed_audio_in_temp(self, extra_stems: Optional[List[str]] = None) -> List[Path]:
         """
         Checks temp/ for audio files whose corresponding PDF already exists in
@@ -857,6 +904,7 @@ class LectureProcessor:
         sync_slides: bool = True,
         keep_temp: bool = False,
         prepare_only: bool = False,
+        use_agy: bool = True,
     ) -> Dict[str, Any]:
         """
         End-to-end recap pipeline:
@@ -1045,6 +1093,33 @@ class LectureProcessor:
                 slide_match=slide_match,
                 source_ref=lesson_url or str(audio_path or transcript_path or ""),
             )
+            agy_pdf = None
+            if not prepare_only and use_agy:
+                agy_pdf = self._run_agy_on_context(context_path)
+
+            if agy_pdf is not None:
+                if not keep_temp:
+                    for tf in created_temp_files:
+                        if tf.exists():
+                            try:
+                                tf.unlink()
+                            except Exception:
+                                pass
+                    self.cleanup_completed_audio_in_temp(extra_stems=[context_path.stem])
+                return {
+                    "success": True,
+                    "prepared_only": False,
+                    "pdf_path": str(agy_pdf),
+                    "desktop_pdf_path": str(agy_pdf),
+                    "course": effective_course,
+                    "lesson_title": lesson_title,
+                    "lesson_date": lesson_date,
+                    "slides_used": slide_match.filename if slide_match else None,
+                    "slides_path": str(slide_match.pdf_path) if slide_match else None,
+                    "slides_reason": slide_match.reason if slide_match else "Nessuna slide corrispondente trovata: recap generato via agy.",
+                    "kept_temp": keep_temp,
+                }
+
             if (lesson_url or lesson_selector) and not keep_temp:
                 for tf in created_temp_files:
                     if tf.exists():

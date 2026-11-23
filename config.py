@@ -40,6 +40,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://openrouter.ai/api/v1").strip()
 API_KEY = os.getenv("API_KEY", "").strip()
 MODEL_NAME = os.getenv("MODEL_NAME", "google/gemini-2.5-pro").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+AUTO_AGY = os.getenv("AUTO_AGY", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 # Local Parakeet / ONNX-ASR transcription configuration
 ASR_MODEL = os.getenv("ASR_MODEL", "").strip()

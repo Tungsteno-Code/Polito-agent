@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--slides", help="Percorso esplicito al PDF delle slide (altrimenti riconosciute automaticamente)")
     parser.add_argument("--sync-slides", action="store_true", default=True, help="Sincronizza i PDF mancanti dal portale (attivo di default)")
     parser.add_argument("--no-sync-slides", dest="sync_slides", action="store_false", help="Salta la sincronizzazione automatica delle slide dal portale")
+    parser.add_argument("--no-agy", dest="use_agy", action="store_false", default=True, help="Non invocare automaticamente agy dopo il salvataggio del contesto")
     parser.add_argument("--keep-temp", action="store_true", help="Conserva .mp3, .txt e .md nella cartella temp/")
 
     args = parser.parse_args()
@@ -56,6 +57,7 @@ def main():
         explicit_slides=Path(args.slides) if args.slides else None,
         sync_slides=args.sync_slides,
         keep_temp=args.keep_temp,
+        use_agy=args.use_agy,
     )
 
     console.print(f"[bold green]✔ PDF generato:[/bold green] {result['pdf_path']}")

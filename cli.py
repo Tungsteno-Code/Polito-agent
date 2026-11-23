@@ -342,6 +342,7 @@ def cmd_recap(args):
             sync_slides=args.sync_slides,
             keep_temp=args.keep_temp,
             prepare_only=args.prepare_only,
+            use_agy=args.use_agy,
         )
         _print_recap_result(recap)
     except Exception as e:
@@ -598,6 +599,7 @@ def main():
     p_recap.add_argument("--sync-slides", action="store_true", default=True, help="Sincronizza i PDF mancanti dal portale (attivo di default)")
     p_recap.add_argument("--no-sync-slides", dest="sync_slides", action="store_false", help="Salta la sincronizzazione automatica delle slide dal portale")
     p_recap.add_argument("--prepare-only", action="store_true", help="Prepara solo trascrizione + slide in context/ senza chiamare API esterne")
+    p_recap.add_argument("--no-agy", dest="use_agy", action="store_false", default=True, help="Non invocare automaticamente agy dopo il salvataggio del contesto")
     p_recap.add_argument("--keep-temp", action="store_true", help="Conserva audio, trascrizione e Markdown in temp/")
 
     # Command: menu (anche default quando si lancia `polito` senza argomenti)

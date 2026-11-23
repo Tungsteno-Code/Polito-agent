@@ -84,7 +84,7 @@ polito recap --from-md ~/Desktop/PoliTO/Operating\ systems/context/Video_Lezione
 Come funziona il riconoscimento automatico:
 * **Corso:** viene rilevato automaticamente dai parametri URL/pagina, dalla cache dei corsi iscritti, dalle slide corrispondenti oppure dal lessico della trascrizione rispetto ai PDF già presenti in `~/Desktop/PoliTO/`.
 * **Slide:** confronta titolo e trascrizione audio con i PDF estratti (con cache locale veloce in `data/pdf_text_cache.json`). Se non c'è una slide corrispondente, usa solo l'audio.
-* **Modalità senza API key (`--prepare-only` / fallback automatico):** salva il file pronto in `~/Desktop/PoliTO/<Corso>/context/<AAAA-MM-GG>_<Argomento>.md` (es. `2026-11-17_Build_Management_(Maven)_and_CI.md`).
+* **Modalità senza API key (`--prepare-only` / fallback automatico):** salva il file pronto in `~/Desktop/PoliTO/<Corso>/context/<AAAA-MM-GG>_<Argomento>.md` (es. `2026-11-17_Build_Management_(Maven)_and_CI.md`). Se `agy` è installato nel `PATH` (e `AUTO_AGY=true`, senza `--prepare-only` né `--no-agy`), lancia automaticamente `agy -p` per eseguire le istruzioni del file, generare il PDF in `Appunti_Lezioni/` e spostare il `.md` in `used/`.
 * **PDF finale:** viene salvato in `appunti_pdf/` e copiato in `~/Desktop/PoliTO/<Corso>/Appunti_Lezioni/`.
 
 ---
