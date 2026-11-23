@@ -41,11 +41,11 @@ API_KEY = os.getenv("API_KEY", "").strip()
 MODEL_NAME = os.getenv("MODEL_NAME", "google/gemini-2.5-pro").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-# Local Whisper transcription configuration
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "").strip()
-WHISPER_MODEL_EN = os.getenv("WHISPER_MODEL_EN", "distil-medium.en").strip()
-WHISPER_MODEL_IT = os.getenv("WHISPER_MODEL_IT", "medium").strip()
-WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8").strip()
+# Local Parakeet / ONNX-ASR transcription configuration
+ASR_MODEL = os.getenv("ASR_MODEL", "").strip()
+ASR_MODEL_EN = os.getenv("ASR_MODEL_EN", "nemo-parakeet-tdt-0.6b-v3").strip()
+ASR_MODEL_IT = os.getenv("ASR_MODEL_IT", "nemo-parakeet-tdt-0.6b-v3").strip()
+ASR_QUANTIZATION = os.getenv("ASR_QUANTIZATION", "int8").strip()
 
 # Shared course aliases for natural language queries and slide matching
 COURSE_ALIASES = {

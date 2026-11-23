@@ -29,7 +29,8 @@ def main():
     parser.add_argument("--transcript", help="Percorso a una trascrizione .txt esistente")
     parser.add_argument("--course", help="Nome/parola chiave del corso (opzionale, aiuta a filtrare le slide)")
     parser.add_argument("--slides", help="Percorso esplicito al PDF delle slide (altrimenti riconosciute automaticamente)")
-    parser.add_argument("--sync-slides", action="store_true", help="Sincronizza prima le slide del corso dal Portale")
+    parser.add_argument("--sync-slides", action="store_true", default=True, help="Sincronizza i PDF mancanti dal portale (attivo di default)")
+    parser.add_argument("--no-sync-slides", dest="sync_slides", action="store_false", help="Salta la sincronizzazione automatica delle slide dal portale")
     parser.add_argument("--keep-temp", action="store_true", help="Conserva .mp3, .txt e .md nella cartella temp/")
 
     args = parser.parse_args()

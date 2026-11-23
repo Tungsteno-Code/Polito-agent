@@ -21,10 +21,10 @@ from config import (
     MODEL_NAME,
     PDF_OUTPUT_DIR,
     TEMP_DIR,
-    WHISPER_COMPUTE_TYPE,
-    WHISPER_MODEL,
-    WHISPER_MODEL_EN,
-    WHISPER_MODEL_IT,
+    ASR_MODEL,
+    ASR_MODEL_EN,
+    ASR_MODEL_IT,
+    ASR_QUANTIZATION,
 )
 from file_organizer import FileOrganizer
 from polito_client import PolitoClient
@@ -59,8 +59,9 @@ Regole obbligatorie di redazione:
 COMPACT_CONTEXT_INSTRUCTIONS = """Genera appunti universitari COMPLETI, DETTAGLIATI ed ESAUSTIVI in italiano (Markdown + LaTeX compilabile con Pandoc/XeLaTeX), senza omettere spiegazioni o esempi:
 - Struttura in capitoli (`#`, `##`, `###`), rimuovendo solo intercalari e ripetizioni del parlato.
 - Formule/dimostrazioni/complessità in LaTeX (`$...$`, `$$...$$`, niente simboli Unicode isolati fuori dal LaTeX).
-- Aggiungi implementazioni di codice complete, funzionanti e commentate + diagrammi solo ASCII (`+---+`, `->`).
-- Chiudi con `## Casi Limite, Errori Comuni e Domande d'Esame`."""
+- Includi codice completo e commentato SOLO se la lezione/materia riguarda programmazione, algoritmi o implementazioni software (altrimenti ometti il codice); usa diagrammi solo ASCII (`+---+`, `->`) per architetture, reti e flussi.
+- Chiudi con `## Casi Limite, Errori Comuni e Domande d'Esame`.
+- Output e archiviazione: crea `../Appunti_Lezioni/` se non esiste, salva lì il PDF con lo stesso nome base di questo file (`<nome>.pdf`), poi sposta questo `.md` in `used/`."""
 
 
 def compact_transcript_for_context(transcript_text: str, block_seconds: int = 90) -> str:
@@ -128,11 +129,11 @@ def infer_course_language(course_name: str = "", lesson_title: str = "") -> str:
     return "it"
 
 
-def select_whisper_model(language: str) -> str:
-    """Selects the optimal Whisper model for the course language unless WHISPER_MODEL overrides it."""
-    if WHISPER_MODEL:
-        return WHISPER_MODEL
-    return WHISPER_MODEL_EN if language == "en" else WHISPER_MODEL_IT
+def select_asr_model(language: str) -> str:
+    """Selects the optimal ONNX-ASR model for the course language unless ASR_MODEL overrides it."""
+    if ASR_MODEL:
+        return ASR_MODEL
+    return ASR_MODEL_EN if language == "en" else ASR_MODEL_IT
 
 
 def sanitize_filename(name: str) -> str:
@@ -463,27 +464,29 @@ class LectureProcessor:
         language: str = "it",
     ) -> str:
         """
-        Transcribes an audio file locally using faster-whisper with [MM:SS] timestamps
-        and saves a backup copy in transcript_path.
-        Uses ffmpeg to decode audio to 16kHz mono float32 PCM so it stays immune
-        to PyAV/faster-whisper version mismatches.
+        Transcribes an audio file locally using onnx-asr (Parakeet TDT) + Silero VAD
+        with [MM:SS] timestamps and saves a backup copy in transcript_path.
+        Uses ffmpeg to decode and normalize audio to 16kHz mono float32 PCM.
         """
         import numpy as np
-        from faster_whisper import WhisperModel
+        import onnx_asr
+        import onnxruntime as ort
 
-        model_name = select_whisper_model(language)
-        threads = min(12, os.cpu_count() or 4)
+        model_name = select_asr_model(language)
+        threads = min(8, os.cpu_count() or 4)
         logger.info(
-            f"Trascrizione locale con faster-whisper (modello={model_name}, "
-            f"language={language}, compute_type={WHISPER_COMPUTE_TYPE}, threads={threads}, beam_size=5)..."
+            f"Trascrizione locale con onnx-asr (modello={model_name}, "
+            f"language={language}, quantization={ASR_QUANTIZATION}, threads={threads})..."
         )
 
         audio_input: Any = str(audio_path)
+        duration_sec = 0.0
         if shutil.which("ffmpeg"):
             dec = subprocess.run(
                 [
                     "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                     "-i", str(audio_path),
+                    "-af", "highpass=f=80,dynaudnorm=f=150:g=15",
                     "-f", "f32le", "-acodec", "pcm_f32le",
                     "-ac", "1", "-ar", "16000", "pipe:1",
                 ],
@@ -491,32 +494,91 @@ class LectureProcessor:
             )
             if dec.returncode == 0 and dec.stdout:
                 audio_input = np.frombuffer(dec.stdout, dtype=np.float32)
+                duration_sec = len(audio_input) / 16000.0
 
-        model = WhisperModel(
+        sess_options = ort.SessionOptions()
+        sess_options.intra_op_num_threads = threads
+        sess_options.inter_op_num_threads = 1
+
+        quant = ASR_QUANTIZATION or None
+        model = onnx_asr.load_model(
             model_name,
-            device="cpu",
-            compute_type=WHISPER_COMPUTE_TYPE,
-            cpu_threads=threads,
+            quantization=quant,
+            sess_options=sess_options,
         )
-        segments, _info = model.transcribe(
-            audio_input,
-            language=language,
-            beam_size=5,
-            condition_on_previous_text=True,
-            initial_prompt=context_prompt or None,
-            vad_filter=True,
-            log_progress=True,
+        vad = onnx_asr.load_vad("silero", sess_options=sess_options)
+        vad_model = model.with_vad(
+            vad,
+            batch_size=2,
+            threshold=0.25,
+            min_speech_duration_ms=100,
+            min_silence_duration_ms=1500,
+            speech_pad_ms=400,
+            max_speech_duration_s=30,
         )
+        segments = vad_model.recognize(audio_input, sample_rate=16000)
 
         lines = []
-        for seg in segments:
-            total_sec = max(0, int(seg.start))
-            minutes, seconds = divmod(total_sec, 60)
-            text = (seg.text or "").strip()
-            if text:
-                lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+        kept_sec = 0.0
+        total_sec_float = duration_sec if duration_sec > 0 else 0.0
+
+        try:
+            from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+        except ImportError:
+            Progress = None  # type: ignore[assignment]
+
+        if Progress is not None and total_sec_float > 0:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold cyan]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("({task.fields[pos]}/{task.fields[tot]})"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                tot_m, tot_s = divmod(int(total_sec_float), 60)
+                task = progress.add_task(
+                    "Trascrizione",
+                    total=total_sec_float,
+                    pos="00:00",
+                    tot=f"{tot_m:02d}:{tot_s:02d}",
+                )
+                for seg in segments:
+                    total_sec = max(0, int(seg.start))
+                    end_sec = min(total_sec_float, max(0.0, float(seg.end)))
+                    kept_sec += max(0.0, float(seg.end) - float(seg.start))
+                    minutes, seconds = divmod(total_sec, 60)
+                    text = (seg.text or "").strip()
+                    if text:
+                        lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+                    progress.update(task, completed=end_sec, pos=f"{minutes:02d}:{seconds:02d}")
+                progress.update(task, completed=total_sec_float)
+        else:
+            last_logged_min = -5
+            for seg in segments:
+                total_sec = max(0, int(seg.start))
+                kept_sec += max(0.0, float(seg.end) - float(seg.start))
+                minutes, seconds = divmod(total_sec, 60)
+                text = (seg.text or "").strip()
+                if text:
+                    lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+                if minutes - last_logged_min >= 5:
+                    last_logged_min = minutes
+                    logger.info(f"Trascrizione in corso: [{minutes:02d}:{seconds:02d}]...")
 
         transcript_text = "\n".join(lines)
+        if duration_sec > 0:
+            removed_sec = max(0.0, duration_sec - kept_sec)
+            logger.info(
+                f"Riepilogo VAD: durata totale {duration_sec/60:.1f} min | "
+                f"parlato tenuto {kept_sec/60:.1f} min | silenzi rimossi {removed_sec/60:.1f} min"
+            )
+        if duration_sec > 120 and len(transcript_text) < (duration_sec / 60.0) * 120:
+            logger.warning(
+                f"Trascrizione insolitamente corta ({len(transcript_text)} char su {duration_sec/60:.1f} min): "
+                "possibile audio con poco parlato o volume molto basso."
+            )
         if not transcript_text.strip():
             raise RuntimeError("Trascrizione vuota: nessun parlato rilevato nell'audio.")
 
@@ -666,26 +728,28 @@ class LectureProcessor:
         return pdf_path
 
     def _sync_course_slides_if_requested(self, course_hint: Optional[str]):
-        """Syncs slides for a matching course from PoliTO portal before slide matching."""
+        """Syncs only missing slide PDFs for a matching course from PoliTO portal before slide matching."""
         if not course_hint:
             return
         try:
-            enrolled = self.client.get_enrolled_courses()
             from config import COURSE_ALIASES
+            from sync_slides import filter_missing_portal_pdfs
+
+            enrolled = self.client.get_enrolled_courses()
             kw = course_hint.lower().strip()
             mapped = COURSE_ALIASES.get(kw, kw)
             for c in enrolled:
                 c_name = c["name"].lower()
                 if kw in c_name or mapped in c_name:
                     materials = self.client.crawl_course_materials(c)
-                    slide_mats = [
-                        m for m in materials
-                        if m["filename"].lower().endswith(".pdf")
-                        and self.organizer.categorize(m["filename"], m.get("remote_path", "")) in {"Lezioni", "Materiale_Generale"}
-                    ]
-                    if slide_mats:
-                        logger.info(f"Sincronizzazione di {len(slide_mats)} PDF di slide per {c['name']}...")
-                        self.client.download_materials_batch(slide_mats)
+                    missing_slides = filter_missing_portal_pdfs(self.organizer, c["name"], materials)
+                    if missing_slides:
+                        logger.info(
+                            f"Download di {len(missing_slides)} nuovi PDF di slide mancanti per {c['name']}..."
+                        )
+                        self.client.download_materials_batch(missing_slides)
+                    else:
+                        logger.info(f"Tutte le slide di {c['name']} sono gia' presenti in locale.")
         except Exception as e:
             logger.warning(f"Impossibile sincronizzare le slide dal portale (uso i file locali): {e}")
 
@@ -781,7 +845,7 @@ class LectureProcessor:
         preloaded_course: Optional[Dict[str, Any]] = None,
         preloaded_video: Optional[Dict[str, Any]] = None,
         explicit_slides: Optional[Path] = None,
-        sync_slides: bool = False,
+        sync_slides: bool = True,
         keep_temp: bool = False,
         prepare_only: bool = False,
     ) -> Dict[str, Any]:
@@ -923,9 +987,6 @@ class LectureProcessor:
         else:
             raise ValueError("Specifica almeno una sorgente: --url, --audio, --transcript oppure --from-md.")
 
-        if sync_slides and detected_course:
-            self._sync_course_slides_if_requested(detected_course)
-
         # Quick course pre-detection from title / page_context only (not spoken transcript body)
         quick_course_hint = detected_course or None
         if not quick_course_hint:
@@ -942,6 +1003,9 @@ class LectureProcessor:
                         if resolved:
                             quick_course_hint = resolved[0].name
                             break
+
+        if sync_slides and not explicit_slides and quick_course_hint:
+            self._sync_course_slides_if_requested(quick_course_hint)
 
         # Recognize matching slide PDF from Desktop/PoliTO (across all courses if still unknown)
         llm_chooser = self.llm.choose_matching_slide if self.llm.is_configured else None

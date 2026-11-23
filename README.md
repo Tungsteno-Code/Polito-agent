@@ -2,15 +2,16 @@
 
 Agente AI per il **Portale della Didattica del Politecnico di Torino** che:
 1. **Sincronizza e organizza** automaticamente slide, esercitazioni, laboratori e temi d'esame in `~/Desktop/PoliTO/`.
-2. **Scarica solo l'audio** delle videolezioni dal portale (`Playwright` + `yt-dlp`), lo **trascrive localmente** con `faster-whisper`, **riconosce automaticamente il PDF delle slide** su cui si basa la lezione (o usa solo l'audio se non ci sono slide corrispondenti) e **genera appunti universitari in PDF** impaginati con LaTeX tramite `pandoc` + `xelatex`.
+2. **Scarica solo l'audio** delle videolezioni dal portale (`Playwright` + `yt-dlp`), lo **trascrive localmente** con `onnx-asr` (`Parakeet TDT` + `Silero VAD`), **riconosce automaticamente il PDF delle slide** su cui si basa la lezione (o usa solo l'audio se non ci sono slide corrispondenti) e **genera appunti universitari in PDF** impaginati con LaTeX tramite `pandoc` + `xelatex`.
 
 ---
 
 ## 🛠️ Setup (Fedora Linux)
 
-1. Esegui lo script di installazione (installa `ffmpeg`, `pandoc`, `texlive-xetex`, ricrea `.venv`, installa le dipendenze Python e Chromium):
+1. Clona il repository ed esegui lo script di installazione (installa `ffmpeg`, `pandoc`, `texlive-xetex`, ricrea `.venv`, installa le dipendenze Python e Chromium):
    ```bash
-   cd polito-agent
+   git clone https://github.com/Tungsteno-Code/Polito-agent.git
+   cd Polito-agent
    chmod +x setup.sh
    ./setup.sh
    ```

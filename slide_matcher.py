@@ -153,6 +153,9 @@ def extract_pdf_text(pdf_path: Path, max_pages: int = 120, max_chars: int = 4500
         return "", 0
 
 
+EXCLUDED_SLIDE_DIRS = {"appunti_lezioni", "appunti_pdf", "appunti", "context"}
+
+
 class SlideMatcher:
     def __init__(self, organizer: Optional[FileOrganizer] = None):
         self.organizer = organizer or FileOrganizer()
@@ -202,7 +205,7 @@ class SlideMatcher:
             for pdf in sorted(c_dir.rglob("*.pdf")):
                 rel_parts = pdf.relative_to(c_dir).parts
                 category = rel_parts[0] if len(rel_parts) > 1 else "Materiale_Generale"
-                if category.lower() in {"appunti_lezioni", "appunti_pdf", "context"}:
+                if category.lower() in EXCLUDED_SLIDE_DIRS:
                     continue
                 candidates.append((c_dir.name, category, pdf))
 
@@ -411,7 +414,7 @@ class SlideMatcher:
             course_tokens.update(tokenize(d.name))
             pdfs = [
                 p for p in sorted(d.rglob("*.pdf"))
-                if p.relative_to(d).parts[0].lower() not in {"appunti_lezioni", "appunti_pdf", "context"}
+                if p.relative_to(d).parts[0].lower() not in EXCLUDED_SLIDE_DIRS
             ]
             for pdf in pdfs[:12]:
                 txt, _ = extract_pdf_text(pdf, max_pages=20, max_chars=8000)

@@ -190,9 +190,34 @@ def _render_videos_table(course_name: str, videos: List[Dict[str, Any]], organiz
     """
     clean_course = organizer.sanitize_name(course_name)
     course_dir = organizer.base_dir / clean_course
-    context_dir = course_dir / "context"
-    appunti_dir = course_dir / "Appunti_Lezioni"
+    context_dirs = [
+        d for d in (
+            course_dir / "context",
+            course_dir / "context" / "used",
+            course_dir / "context" / "contest used",
+        )
+        if d.exists()
+    ]
+    appunti_dirs = [
+        d for d in (
+            course_dir / "Appunti_Lezioni",
+            course_dir / "appunti",
+        )
+        if d.exists()
+    ]
     matcher = SlideMatcher(organizer=organizer)
+
+    def _find_lesson_file(dirs: list[Path], stem: str, date_prefix: str, ext: str) -> Path | None:
+        for d in dirs:
+            exact = d / f"{stem}{ext}"
+            if exact.exists():
+                return exact
+        if date_prefix and date_prefix != "undated":
+            for d in dirs:
+                matches = sorted(d.glob(f"{date_prefix}_*{ext}"))
+                if matches:
+                    return matches[0]
+        return None
 
     table = Table(title=f"🎥 Videolezioni: {course_name}", border_style="cyan")
     table.add_column("#", style="bold magenta", justify="right")
@@ -209,12 +234,12 @@ def _render_videos_table(course_name: str, videos: List[Dict[str, Any]], organiz
         norm_date = _normalize_vc_date(v.get("date", ""))
         stem = format_lesson_filename_stem(v["title"], norm_date)
 
-        ctx_file = context_dir / f"{stem}.md"
-        pdf_desktop = appunti_dir / f"{stem}.pdf"
+        ctx_file = _find_lesson_file(context_dirs, stem, norm_date, ".md")
+        pdf_desktop = _find_lesson_file(appunti_dirs, stem, norm_date, ".pdf")
         pdf_local = PDF_OUTPUT_DIR / f"{stem}.pdf"
 
-        has_pdf = pdf_desktop.exists() or pdf_local.exists()
-        has_ctx = ctx_file.exists()
+        has_pdf = (pdf_desktop is not None) or pdf_local.exists()
+        has_ctx = ctx_file is not None
         is_done = has_pdf or has_ctx
 
         if has_pdf and has_ctx:
@@ -570,7 +595,8 @@ def main():
     p_recap.add_argument("--course", help="Nome o sigla del corso (opzionale con --url/--audio; richiesto con --lesson)")
     p_recap.add_argument("--lesson", help="Numero, data (es. 21/09/2026) o titolo della lezione da `polito videos`")
     p_recap.add_argument("--slides", help="Percorso esplicito al PDF delle slide (opzionale, altrimenti riconosciute in automatico)")
-    p_recap.add_argument("--sync-slides", action="store_true", help="Sincronizza prima le slide dal portale se --course è specificato")
+    p_recap.add_argument("--sync-slides", action="store_true", default=True, help="Sincronizza i PDF mancanti dal portale (attivo di default)")
+    p_recap.add_argument("--no-sync-slides", dest="sync_slides", action="store_false", help="Salta la sincronizzazione automatica delle slide dal portale")
     p_recap.add_argument("--prepare-only", action="store_true", help="Prepara solo trascrizione + slide in context/ senza chiamare API esterne")
     p_recap.add_argument("--keep-temp", action="store_true", help="Conserva audio, trascrizione e Markdown in temp/")
 

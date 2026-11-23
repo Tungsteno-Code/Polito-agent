@@ -34,8 +34,12 @@ else
   echo ".env già esistente: preservato senza sovrascritture."
 fi
 
-chmod +x "$SCRIPT_DIR/polito" "$SCRIPT_DIR/sbobina.py" "$SCRIPT_DIR/setup.sh"
+chmod +x "$SCRIPT_DIR/polito" "$SCRIPT_DIR/sbobina.py" "$SCRIPT_DIR/sync_slides.py" "$SCRIPT_DIR/setup.sh"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$SCRIPT_DIR/polito" "$HOME/.local/bin/polito"
+
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  echo "Nota: aggiungi ~/.local/bin al PATH (es. export PATH=\"\$HOME/.local/bin:\$PATH\" in ~/.bashrc)."
+fi
 
 echo "=== Setup completato! Prova con: polito --help ==="
