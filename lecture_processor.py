@@ -192,32 +192,41 @@ class LLMHelper:
         self.api_key = api_key
         self.model_name = model_name
         self.gemini_api_key = gemini_api_key
-        self.openai_client = None
         self.gemini_client = None
 
-        if self.api_key:
-            from openai import OpenAI
-            self.openai_client = OpenAI(base_url=self.api_base_url, api_key=self.api_key)
-        elif self.gemini_api_key:
+        if not self.api_key and self.gemini_api_key:
             from google import genai
             self.gemini_client = genai.Client(api_key=self.gemini_api_key)
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.openai_client or self.gemini_client)
+        return bool(self.api_key or self.gemini_client)
 
     def generate(self, system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
         """Generates a text response using the configured LLM backend."""
-        if self.openai_client is not None:
-            resp = self.openai_client.chat.completions.create(
-                model=self.model_name,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+        if self.api_key:
+            import requests
+
+            endpoint = f"{self.api_base_url.rstrip('/')}/chat/completions"
+            resp = requests.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model_name,
+                    "temperature": temperature,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                },
+                timeout=180,
             )
-            return (resp.choices[0].message.content or "").strip()
+            resp.raise_for_status()
+            data = resp.json()
+            return (data["choices"][0]["message"]["content"] or "").strip()
 
         if self.gemini_client is not None:
             from google.genai import types
