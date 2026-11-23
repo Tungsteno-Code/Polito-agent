@@ -827,12 +827,10 @@ class LectureProcessor:
         )
         cmd = [
             agy_bin,
-            "-p",
-            "--mode", "auto",
             "--dangerously-skip-permissions",
             "--disable-slash-commands",
             "--add-dir", str(course_dir),
-            prompt,
+            f"-p={prompt}",
         ]
         logger.info(f"Avvio automatico agy per eseguire le istruzioni di {context_path.name}...")
         proc = subprocess.run(cmd, cwd=str(context_path.parent), check=False)
