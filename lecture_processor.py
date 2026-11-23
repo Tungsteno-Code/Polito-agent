@@ -1,6 +1,6 @@
 """
 Lecture Processor module for PoliTO Agent.
-Handles lecture audio capture, local Whisper transcription, automatic slide recognition,
+Handles lecture audio capture, local Parakeet TDT (onnx-asr) transcription, automatic slide recognition,
 LLM technical note synthesis, Pandoc/XeLaTeX PDF generation, and temp cleanup.
 """
 
@@ -861,7 +861,7 @@ class LectureProcessor:
         """
         End-to-end recap pipeline:
         1. Acquire audio (from URL or local audio), read existing transcript, or compile from Markdown
-        2. Transcribe locally with faster-whisper
+        2. Transcribe locally with onnx-asr (Parakeet TDT + Silero VAD)
         3. Automatically recognize matching PDF slides & course (or fall back to audio-only)
         4. Generate Markdown+LaTeX notes via LLM (or save context in <Corso>/context/Video_Lezione_<N>.md)
         5. Compile PDF via Pandoc/XeLaTeX and organize into appunti_pdf + Desktop/PoliTO
